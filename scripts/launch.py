@@ -3,10 +3,28 @@ import json
 import os
 
 import click
+import hashlib, os.path as osp, subprocess, tempfile, uuid, sys
 
 AMI_MAP = {
-    "us-west-1": "FILL IN YOUR AMI HERE",
+    "us-west-1": "ami-066f029282f59e0fc",
+    "us-west-2": "ami-037c9347e489a75a2",
 }
+
+THISFILE_DIR = osp.dirname(osp.abspath(__file__))
+PKG_PARENT_DIR = osp.abspath(osp.join(THISFILE_DIR, '..', '..'))
+PKG_SUBDIR = osp.basename(osp.abspath(osp.join(THISFILE_DIR, '..')))
+assert osp.abspath(__file__) == osp.join(PKG_PARENT_DIR, PKG_SUBDIR, 'scripts', 'launch.py'), 'You moved me!'
+
+
+def _is_ebs_optimized(instance_type):
+
+    # TODO: do this more accurately
+    # https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/EBSOptimized.html
+    # by encoding the entire table ^^
+
+    if 't2' in instance_type:
+        return False
+    return True
 
 
 def highlight(x):
@@ -16,21 +34,18 @@ def highlight(x):
 
 
 def upload_archive(exp_name, archive_excludes, s3_bucket):
-    import hashlib, os.path as osp, subprocess, tempfile, uuid, sys
 
     # Archive this package
-    thisfile_dir = osp.dirname(osp.abspath(__file__))
-    pkg_parent_dir = osp.abspath(osp.join(thisfile_dir, '..', '..'))
-    pkg_subdir = osp.basename(osp.abspath(osp.join(thisfile_dir, '..')))
-    assert osp.abspath(__file__) == osp.join(pkg_parent_dir, pkg_subdir, 'scripts', 'launch.py'), 'You moved me!'
 
     # Run tar
     tmpdir = tempfile.TemporaryDirectory()
     local_archive_path = osp.join(tmpdir.name, '{}.tar.gz'.format(uuid.uuid4()))
-    tar_cmd = ["tar", "-zcvf", local_archive_path, "-C", pkg_parent_dir]
+    tar_cmd = ["tar", "-zcvf", local_archive_path, "-C", PKG_PARENT_DIR,
+               "--mtime", '1970-01-01'  # hack: allow tarball contents to be hash-compared
+               ]
     for pattern in archive_excludes:
         tar_cmd += ["--exclude", pattern]
-    tar_cmd += ["-h", pkg_subdir]
+    tar_cmd += ["-h", PKG_SUBDIR]
     highlight(" ".join(tar_cmd))
 
     if sys.platform == 'darwin':
@@ -44,12 +59,30 @@ def upload_archive(exp_name, archive_excludes, s3_bucket):
     # Construct remote path to place the archive on S3
     with open(local_archive_path, 'rb') as f:
         archive_hash = hashlib.sha224(f.read()).hexdigest()
-    remote_archive_path = '{}/{}_{}.tar.gz'.format(s3_bucket, exp_name, archive_hash)
 
-    # Upload
-    upload_cmd = ["aws", "s3", "cp", local_archive_path, remote_archive_path]
-    highlight(" ".join(upload_cmd))
-    subprocess.check_call(upload_cmd)
+    remote_archive_key = '{}_{}.tar.gz'.format(exp_name, archive_hash)
+    remote_archive_path = 's3://{}/{}'.format(s3_bucket, remote_archive_key)
+
+
+    # check if exists already
+    # TODO: finish unfucking this
+    # still having my archives differ for some reason
+    # next step:
+    #  - reduce contents to a single file only
+    #    - see if metadata is changing somewhere & crush it
+    try:
+        head_cmd = ["aws", "s3api", "head-object",
+                    "--bucket", s3_bucket,
+                    "--key", remote_archive_key]
+        highlight(" ".join(head_cmd))
+        subprocess.check_call(head_cmd)
+
+    except subprocess.CalledProcessError as e:
+        print(e)
+        # Upload
+        upload_cmd = ["aws", "s3", "cp", local_archive_path, remote_archive_path]
+        highlight(" ".join(upload_cmd))
+        subprocess.check_call(upload_cmd)
 
     presign_cmd = ["aws", "s3", "presign", remote_archive_path, "--expires-in", str(60 * 60 * 24 * 30)]
     highlight(" ".join(presign_cmd))
@@ -68,6 +101,12 @@ for cpunum in $(
 done
 """
 
+def init_venv_script():
+    return """
+python3 -m venv ve
+source ve/bin/activate
+pip install -r requirements.txt
+"""
 
 def make_download_and_run_script(code_url, cmd):
     return """su -l ubuntu <<'EOF'
@@ -76,10 +115,17 @@ cd ~
 wget --quiet "{code_url}" -O code.tar.gz
 tar xvaf code.tar.gz
 rm code.tar.gz
-cd es-distributed
+#cd es-distributed
+cd {pkg_subdir}
+{init_venv_script}
 {cmd}
 EOF
-""".format(code_url=code_url, cmd=cmd)
+""".format(code_url=code_url, cmd=cmd, pkg_subdir=PKG_SUBDIR,
+           init_venv_script=init_venv_script())
+
+# HACK
+ALGO='es'
+
 
 
 def make_master_script(code_url, exp_str):
@@ -87,9 +133,10 @@ def make_master_script(code_url, exp_str):
 cat > ~/experiment.json <<< '{exp_str}'
 python -m es_distributed.main master \
     --master_socket_path /var/run/redis/redis.sock \
+    --algo {algo} \
     --log_dir ~ \
     --exp_file ~/experiment.json
-    """.format(exp_str=exp_str)
+    """.format(exp_str=exp_str, algo=ALGO)
     return """#!/bin/bash
 {
 set -x
@@ -116,8 +163,10 @@ systemctl restart redis
 def make_worker_script(code_url, master_private_ip):
     cmd = ("MKL_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 "
            "python -m es_distributed.main workers "
-           "--master_host {} "
-           "--relay_socket_path /var/run/redis/redis.sock").format(master_private_ip)
+           "--master_host {master_host} "
+            "--algo {algo} "
+           "--relay_socket_path /var/run/redis/redis.sock").format(master_host=master_private_ip,
+                                                                   algo=ALGO)
     return """#!/bin/bash
 {
 set -x
@@ -144,9 +193,11 @@ systemctl restart redis
 @click.command()
 @click.argument('exp_files', nargs=-1, type=click.Path(), required=True)
 @click.option('--key_name', default=lambda: os.environ["KEY_NAME"])
-@click.option('--aws_access_key_id', default=os.environ.get("AWS_ACCESS_KEY", None))
-@click.option('--aws_secret_access_key', default=os.environ.get("AWS_ACCESS_SECRET", None))
-@click.option('--archive_excludes', default=(".git", "__pycache__", ".idea", "scratch"))
+@click.option('--aws_access_key_id', default=os.environ.get("AWS_ACCESS_KEY_ID", None))
+@click.option('--aws_secret_access_key', default=os.environ.get("AWS_SECRET_ACCESS_KEY", None))
+@click.option('--archive_excludes', default=(".git", "__pycache__", ".idea", "scratch",
+                                             "ve",
+                                             "scripts/launch.py", "multiplai/scripts/test_launch.sh"))
 @click.option('--s3_bucket')
 @click.option('--spot_price')
 @click.option('--region_name')
@@ -219,7 +270,7 @@ def main(exp_files,
                     ImageId=image_id,
                     KeyName=key_name,
                     InstanceType=master_instance_type,
-                    EbsOptimized=True,
+                    EbsOptimized=_is_ebs_optimized(master_instance_type),
                     SecurityGroups=[security_group],
                     Placement=dict(
                         AvailabilityZone=zone,
@@ -240,13 +291,15 @@ def main(exp_files,
                 ImageId=image_id,
                 KeyName=key_name,
                 InstanceType=master_instance_type,
-                EbsOptimized=True,
+                EbsOptimized=_is_ebs_optimized(master_instance_type),
                 SecurityGroups=[security_group],
+                # SecurityGroupIds=[security_group],
                 MinCount=1,
                 MaxCount=1,
                 Placement=dict(
                     AvailabilityZone=zone,
                 ),
+                # SubnetId="subnet-28a2d240",
                 UserData=make_master_script(code_url, exp_str)
             )[0]
         master_instance.create_tags(
@@ -263,7 +316,7 @@ def main(exp_files,
             ImageId=image_id,
             KeyName=key_name,
             InstanceType=worker_instance_type,
-            EbsOptimized=True,
+            EbsOptimized=_is_ebs_optimized(worker_instance_type),
             SecurityGroups=[security_group],
             LaunchConfigurationName=exp_name,
             UserData=make_worker_script(code_url, master_instance.private_ip_address),

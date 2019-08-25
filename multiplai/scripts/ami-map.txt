@@ -1,0 +1,16 @@
+
+Recorded results of packer build:
+
+ap-northeast-1: ami-014790b0162b45e94
+ap-northeast-2: ami-07e9b9daa8c5258e8
+ap-south-1: ami-09aa56a5a479f090b
+ap-southeast-1: ami-034f39893eca7f9e3
+ap-southeast-2: ami-0ffb8ed55c9f0cdcf
+eu-central-1: ami-02764d765c4d76e55
+eu-west-1: ami-0db7f40430f8e8050
+sa-east-1: ami-030be11fb232eff6c
+us-east-1: ami-01b6b02d1afb0d396
+us-east-2: ami-0905aef294349c67b
+us-west-1: ami-066f029282f59e0fc
+us-west-2: ami-037c9347e489a75a2
+daniel@the-biggest-game:~/Projects

@@ -5,14 +5,17 @@ import logging
 import multiprocessing
 import os
 import sys
-
+from pprint import pprint
 import boto3
 import click
+import functools as ft
+import itertools as it
 
-aws_access_key_id = os.environ.get("AWS_ACCESS_KEY", None)
-aws_secret_access_key = os.environ.get("AWS_ACCESS_SECRET", None)
+aws_access_key_id = os.environ.get("AWS_ACCESS_KEY_ID", None)
+aws_secret_access_key = os.environ.get("AWS_SECRET_ACCESS_KEY", None)
 REGIONS = [
-    "us-west-1",
+    #"us-west-1",
+    os.environ.get("AWS_REGION", "us-west-1")
 ]
 
 def highlight(x):
@@ -34,8 +37,15 @@ DEBUG_LOGGING_MAP = {
                    "for more verbosity.",
               type=click.IntRange(0, 3, clamp=True),
               count=True)
+@click.option('--workers', '-w',
+              is_flag=True,
+              help="Match worker role in instance filters instead of only master role")
 @click.pass_context
-def cli(ctx, verbose):
+def cli(ctx, verbose, workers):
+
+    ctx.ensure_object(dict)
+    ctx.obj['workers'] = workers
+
     logger_handler = logging.StreamHandler(sys.stderr)
     logger_handler.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
     logging.getLogger().addHandler(logger_handler)
@@ -67,7 +77,8 @@ def get_clients():
     return zip(clients, scaling_clients)
 
 
-def _collect_instances(region):
+def _collect_instances(region, role='master'):
+
     client = boto3.client(
         "ec2",
         region_name=region,
@@ -75,12 +86,14 @@ def _collect_instances(region):
         aws_secret_access_key=aws_secret_access_key,
     )
     print("Collecting instances in region", region)
-    instances = [x['Instances'][0] for x in client.describe_instances(
+    instances = [x['Instances']  # [0]    <--- looks like an egregious hack in the original???
+                 for x in client.describe_instances(
         Filters=[
             {
                 'Name': 'tag:es_dist_role',
                 'Values': [
-                    "master"
+                    #"master" #if not workers else "worker"
+                    role
                 ]
             },
             {
@@ -91,6 +104,10 @@ def _collect_instances(region):
             },
         ]
     )['Reservations']]
+    # print("xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx")
+    instances = list(it.chain(*instances))
+    # pprint(instances)
+    # print("xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx")
     for instance in instances:
         instance['Region'] = region
     return instances
@@ -114,10 +131,10 @@ def _collect_scaling_groups(region):
     return groups
 
 
-def get_all_instances():
+def get_all_instances(role='master'):
     # with multiprocessing.Pool(10) as pool:
     #     all_instances = sum(pool.map(_collect_instances, REGIONS), [])
-    all_instances = sum(map(_collect_instances, REGIONS), [])
+    all_instances = sum(map(ft.partial(_collect_instances, role=role), REGIONS), [])
 
     return all_instances
 
@@ -168,15 +185,61 @@ def jobs():
                 group["DesiredCapacity"],
             )
         )
+
+        click.secho("---------------------------------------------------------------------------------",
+                    fg='white')
+        click.secho("%s: workers" % name, fg='green')
+        pprint(group["Instances"])
+
     for job in sorted(jobs):
         click.secho(job, fg='green')
 
 
 def get_instances_by_pattern(job):
-    for instance in get_all_instances():
-        name = get_name_tag(instance)
-        if job in name:
-            yield instance
+
+    workers = click.get_current_context().obj['workers']
+    # print("workers?", workers)
+
+    if not workers:
+        # print("all instances:-----------")
+        # pprint(get_all_instances())
+        # print("-------------")
+
+        for instance in get_all_instances():
+            name = get_name_tag(instance)
+            if job in name:
+                yield instance
+            if job == instance['InstanceId']:
+                yield instance
+    else:
+
+        groups = get_all_scaling_groups()
+        # print("all groups:-----------")
+        # pprint(groups)
+        # print("-------------")
+
+        worker_instances = get_all_instances(role='worker')
+
+        for wi in worker_instances:
+            print(job, '? ==', wi['InstanceId'])
+            if job == wi['InstanceId']:
+                yield wi
+
+        # for g in groups:
+        #     for instance in g['Instances']:
+        #
+        #         # TODO: finish this by actually retrieving an instance object
+        #         # from the api with a public IP attached to it
+        #         # name = get_name_tag(instance)
+        #         # if job in name:
+        #         #     yield instance
+        #         #
+        #         # print(instance['InstanceId'])
+        #         # print(job)
+        #         if job == instance['InstanceId']:
+        #
+        #
+        #             yield instance
 
 def get_groups_by_pattern(job):
     for instance in get_all_scaling_groups():
@@ -209,6 +272,7 @@ def ssh(pattern):
 @click.argument('pattern')
 def tail(pattern):
     for instance in get_instances_by_pattern(pattern):
+        # pprint(instance)
         name = get_name_tag(instance)
         print("Connecting to %s" % name)
         ip_addr = instance['PublicIpAddress']
@@ -303,6 +367,8 @@ def sync(pattern, dest, dry_run):
         cmd = (
             "rsync {dry_run} -zav --progress "
             "-e 'ssh -oStrictHostKeyChecking=no -oConnectTimeout=10' "
+            "--exclude '*/ve/*' "
+            "--exclude '.cache/*' "  
             "ubuntu@{ip}:~ {dest}"
         ).format(
             dry_run='--dry-run' if dry_run else '',

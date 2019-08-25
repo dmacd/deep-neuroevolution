@@ -1,15 +1,15 @@
 {
   "variables": {
-    "aws_access_key": "",
-    "aws_secret_key": ""
+    "aws_access_key": "{{env `AWS_ACCESS_KEY_ID`}}",
+    "aws_secret_key": "{{env `AWS_SECRET_ACCESS_KEY`}}"
   },
   "builders": [
     {
       "type": "amazon-ebs",
       "access_key": "{{user `aws_access_key`}}",
       "secret_key": "{{user `aws_secret_key`}}",
-      "region": "us-west-1",
-      "source_ami": "ami-d8bdebb8",
+      "region": "us-west-2",
+      "source_ami": "ami-07b4f3c02c7f83d59",
       "instance_type": "t2.micro",
       "ssh_username": "ubuntu",
       "ami_name": "es-dist-{{isotime \"2006-01-02-03-04-05\"}}",
