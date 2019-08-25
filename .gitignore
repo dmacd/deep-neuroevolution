@@ -7,3 +7,6 @@ env/
 mujoco/mjpro131
 *.h5
 gym_tensorflow.so
+*.ipynb_checkpoints
+ve/
+.idea
