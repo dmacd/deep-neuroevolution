@@ -3,6 +3,34 @@
 
         python3 -m venv ve
                
+## local testing
+
+Can follow instructions in the root readme except:
+
+- Running redis doenst work unless redis service is stopped and the
+ script is run as root, otherwise the socket doesnt get created                
+
+- socket perms need to be 777 (modified default redis config files
+)               
+
+useful incantations
+
+```
+sudo su
+service redis-server stop
+killall redis-server
+. scripts/local_run_redis.sh
+
+```
+
+
+#### TODO
+There is probably a way to run redis server without root that creates sockets
+ my user can read and write. https://serverfault.com/questions/711566/redis
+ -server-does-not-create-socket-file may help
+               
+## distributed 
+
        
 The uber repo is based on https://github.com/openai/evolution-strategies-starter. To get started with running distributed experiments we need to set up our AMIs 
 
