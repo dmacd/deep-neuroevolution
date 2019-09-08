@@ -3,7 +3,7 @@ import shutil
 import sys
 import time
 from collections import OrderedDict
-
+from typing import Optional
 import tensorflow as tf
 from tensorflow.core.util import event_pb2
 from tensorflow.python import pywrap_tensorflow
@@ -110,9 +110,16 @@ def get_expt_dir():
 # ================================================================
 
 class _Logger(object):
-    DEFAULT = None # A logger with no output files. (See right below class definition) 
-                   # So that you can still log to the terminal without setting up any output files
-    CURRENT = None # Current logger being used by the free functions above
+    DEFAULT: Optional['_Logger'] = None
+    # A logger with no output files. (See
+    # right below
+    # class definition)
+
+    # So that you can still log to the terminal without setting up any output files
+    CURRENT: Optional['_Logger'] = None
+    # Current logger being used by the free
+    # functions
+    # above
 
     def __init__(self, dir=None):
         self.name2val = OrderedDict() # values this iteration

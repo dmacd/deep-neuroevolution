@@ -7,7 +7,22 @@ from copy import deepcopy
 import numpy as np
 
 from .dist import MasterClient, WorkerClient
-from .es import *
+
+import es_distributed.es as es
+
+logger = es.logger
+Config = es.Config
+make_session = es.make_session
+SharedNoiseTable = es.SharedNoiseTable
+get_ref_batch = es.get_ref_batch
+RunningStat = es.RunningStat
+compute_centered_ranks = es.compute_centered_ranks
+batched_weighted_sum = es.batched_weighted_sum
+rollout_and_update_ob_stat = es.rollout_and_update_ob_stat
+
+# NB: mypy chokes on instance with indirect type references
+# Task = es.Task
+# Result = es.Result
 
 def euclidean_distance(x, y):
     n, m = len(x), len(y)
@@ -133,7 +148,7 @@ def run_master(master_redis_cfg, log_dir, exp):
 
         assert theta.dtype == np.float32
 
-        curr_task_id = master.declare_task(Task(
+        curr_task_id = master.declare_task(es.Task(
             params=theta,
             ob_mean=ob_stat.mean if policy.needs_ob_stat else None,
             ob_std=ob_stat.std if policy.needs_ob_stat else None,
@@ -152,7 +167,7 @@ def run_master(master_redis_cfg, log_dir, exp):
             # Re-declare task if original declaration fails to register
             if not new_task_checker:
                 master.task_counter -= 1
-                curr_task_id = master.declare_task(Task(
+                curr_task_id = master.declare_task(es.Task(
                     params=theta,
                     ob_mean=ob_stat.mean if policy.needs_ob_stat else None,
                     ob_std=ob_stat.std if policy.needs_ob_stat else None,
@@ -167,7 +182,7 @@ def run_master(master_redis_cfg, log_dir, exp):
         while num_episodes_popped < config.episodes_per_batch or num_timesteps_popped < config.timesteps_per_batch:
             # Wait for a result
             task_id, result = master.pop_result()
-            assert isinstance(task_id, int) and isinstance(result, Result)
+            assert isinstance(task_id, int) and isinstance(result, es.Result)
             assert (result.eval_return is None) == (result.eval_length is None)
             worker_ids.append(result.worker_id)
 
@@ -331,7 +346,7 @@ def run_worker(master_redis_cfg, relay_redis_cfg, noise, *, min_task_runtime=.2)
     while True:
         task_id, task_data = worker.get_current_task()
         task_tstart = time.time()
-        assert isinstance(task_id, int) and isinstance(task_data, Task)
+        assert isinstance(task_id, int) and isinstance(task_data, es.Task)
 
         if policy.needs_ob_stat:
             policy.set_ob_stat(task_data.ob_mean, task_data.ob_std)
@@ -349,7 +364,7 @@ def run_worker(master_redis_cfg, relay_redis_cfg, noise, *, min_task_runtime=.2)
             eval_rews, eval_length, _ = policy.rollout(env, timestep_limit=task_data.timestep_limit)
             eval_return = eval_rews.sum()
             logger.info('Eval result: task={} return={:.3f} length={}'.format(task_id, eval_return, eval_length))
-            worker.push_result(task_id, Result(
+            worker.push_result(task_id, es.Result(
                 worker_id=worker_id,
                 noise_inds_n=None,
                 returns_n2=None,
@@ -386,7 +401,7 @@ def run_worker(master_redis_cfg, relay_redis_cfg, noise, *, min_task_runtime=.2)
                 returns.append([rews_pos.sum(), rews_neg.sum()])
                 lengths.append([len_pos, len_neg])
 
-            worker.push_result(task_id, Result(
+            worker.push_result(task_id, es.Result(
                 worker_id=worker_id,
                 noise_inds_n=np.array(noise_inds),
                 returns_n2=np.array(returns, dtype=np.float32),

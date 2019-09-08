@@ -78,7 +78,7 @@ def single_threaded_session():
         intra_op_parallelism_threads=1)
     return tf.Session(config=tf_config)
 
-ALREADY_INITIALIZED = set()
+ALREADY_INITIALIZED: set = set()
 def initialize():
     new_variables = set(tf.all_variables()) - ALREADY_INITIALIZED
     get_session().run(tf.initialize_variables(new_variables))
@@ -198,7 +198,7 @@ class _Function(object):
 # Graph traversal
 # ================================================================
 
-VARIABLES = {}
+VARIABLES: dict = {}
 
 # ================================================================
 # Flat vectors
@@ -267,7 +267,7 @@ def in_session(f):
     return newfunc
 
 
-_PLACEHOLDER_CACHE = {} # name -> (placeholder, dtype, shape)
+_PLACEHOLDER_CACHE: dict = {} # name -> (placeholder, dtype, shape)
 def get_placeholder(name, dtype, shape):
     print("calling get_placeholder", name)
     if name in _PLACEHOLDER_CACHE:
