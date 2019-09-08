@@ -34,3 +34,10 @@ def test_build_training_pairs(train_data, embedding):
     assert pair == [(10, 0), (12, 0), (2, 0), (3, 0), (4, 0), (13, 0), (48, 9),
                     (154, 9), (13, 9), (1, 0), (1439, 6), (81, 6), (829, 6),
                     (23, 6), (741, 6), (35, 6), (60, 6), (100, 6), (8, 0)]
+
+
+# todo: test pairs_from_data
+
+def test_pairs_from_data():
+
+    pass

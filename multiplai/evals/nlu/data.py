@@ -8,12 +8,24 @@ from mxnet.contrib import text
 import collections
 from typing import Set, Tuple, Dict, List
 
-TRAIN_DATA_PATH = 'multiplai/evals/nlu/nlu-benchmark/2017-06-custom-intent-engines/GetWeather/train_GetWeather_full.json'
+# TODO: what about `train_GetWeather.json`??
+TRAIN_DATA_PATH = 'multiplai/evals/nlu/nlu-benchmark/' \
+                  '2017-06-custom-intent-engines/GetWeather/' \
+                  'train_GetWeather_full.json'
+TEST_DATA_PATH = 'multiplai/evals/nlu/nlu-benchmark/' \
+                 '2017-06-custom-intent-engines/GetWeather/' \
+                 'validate_GetWeather.json'
+
+def load_data(path):
+    with open(os.path.join(base.repo_root(), path), 'r') as f:
+        data = json.load(f)
+    return data
 
 def load_train_data(path=TRAIN_DATA_PATH):
-    with open(os.path.join(base.repo_root(), TRAIN_DATA_PATH), 'r') as f:
-        train_data = json.load(f)
-    return train_data
+    return load_data(path)
+
+def load_test_data(path=TEST_DATA_PATH):
+    return load_data(path)
 
 def get_train_data_text_and_entities(train_data) -> Tuple[str, Set[str]]:
 
@@ -55,7 +67,8 @@ def get_entity_to_idx(all_entities: Set[str]) -> Dict[str, int]:
     return {ent: idx for idx, ent in enumerate(['<none>'] + sorted(list(
         all_entities)))}
 
-def example_to_training_pair(example, word_to_idx, entity_to_idx):
+def example_to_training_pair(example, word_to_idx, entity_to_idx) \
+        -> List[Tuple[int, int]]:
     pair = []
     for chunk in example['data']:
         if 'entity' in chunk:
@@ -97,4 +110,20 @@ def example_to_training_pair(example, word_to_idx, entity_to_idx):
 def transpose_training_pair(pair: List[Tuple[int,int]]) -> Tuple[nd.array,
                                                                   nd.array]:
 
-   return nd.array(tuple(zip(*pair)),dtype='int')
+   return nd.array(tuple(zip(*pair)), dtype='int')
+
+def pairs_from_data(examples: List[Dict[str,str]],
+                    all_entities: Set[str],
+                    embedding: text.embedding.FastText) \
+    -> List[Tuple[nd.array, nd.array]]:
+
+    training_pairs = [example_to_training_pair(example,
+                                                    get_word_to_idx(
+                                                        embedding),
+                                                    get_entity_to_idx(
+                                                        all_entities))
+                      for example in examples
+                      ]
+    training_pairs = [tp for tp in training_pairs if tp != []]
+    training_pairs = [transpose_training_pair(tp) for tp in training_pairs]
+    return training_pairs

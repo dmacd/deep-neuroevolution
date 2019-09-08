@@ -10,6 +10,10 @@ def get_embedding_for_text(text_data: str) -> text.embedding.FastText:
     vocab = text.vocab.Vocabulary(counter)
     embedding = text.embedding.create('fasttext',
                                       pretrained_file_name='wiki.simple.vec',
+                                      # these are both too big to load in to
+                                      # ram apparently...:(
+                                      # pretrained_file_name='wiki.en.vec',
+                                      # pretrained_file_name='crawl-300d-2M.vec',
                                       vocabulary=vocab)
     return embedding
 
