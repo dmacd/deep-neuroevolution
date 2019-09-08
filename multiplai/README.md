@@ -13,16 +13,14 @@ Can follow instructions in the root readme except:
 - socket perms need to be 777 (modified default redis config files
 )               
 
-useful incantations
+Useful incantations:
 
 ```
 sudo su
 service redis-server stop
 killall redis-server
 . scripts/local_run_redis.sh
-
 ```
-
 
 #### TODO
 There is probably a way to run redis server without root that creates sockets

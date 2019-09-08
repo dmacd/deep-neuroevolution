@@ -1,7 +1,7 @@
 import os
 import json
 import multiplai.base as base
-
+from dataclasses import dataclass
 from mxnet import gluon
 from mxnet import nd
 from mxnet.contrib import text
@@ -127,3 +127,24 @@ def pairs_from_data(examples: List[Dict[str,str]],
     training_pairs = [tp for tp in training_pairs if tp != []]
     training_pairs = [transpose_training_pair(tp) for tp in training_pairs]
     return training_pairs
+
+
+@dataclass(frozen=True)
+class WordIntentPair():
+    word_indices: nd.array
+    class_indices: nd.array
+
+    @classmethod
+    def pairs_from_data(cls, examples, all_entities, embedding)\
+            -> List['WordIntentPair']:
+        pairs = pairs_from_data(examples, all_entities, embedding)
+
+        return [WordIntentPair(word_indices=p[0],
+                               class_indices=p[1]) for p in pairs]
+
+
+    # TODO: is pandas dataframe worth investing in here?
+
+
+
+

@@ -1,6 +1,6 @@
 *.DS_Store
 __pycache__/
-env/
+# env/
 *.pyc
 *.pkl
 *.p
@@ -10,3 +10,4 @@ gym_tensorflow.so
 *.ipynb_checkpoints
 ve/
 .idea
+.mypy_cache
