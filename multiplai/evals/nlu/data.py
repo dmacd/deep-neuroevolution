@@ -143,7 +143,7 @@ class WordIntentPair():
   class_indices: nd.array
 
   @classmethod
-  def pairs_from_data(cls, examples, all_entities, embedding) \
+  def pairs_from_data(cls, examples, all_entities: Set[str], embedding) \
       -> List['WordIntentPair']:
     pairs = pairs_from_data(examples, all_entities, embedding)
 

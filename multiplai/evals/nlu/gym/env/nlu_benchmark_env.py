@@ -2,6 +2,7 @@ import gym
 from gym import error, spaces, utils
 from gym.utils import seeding
 
+import numpy as np
 import gym
 from gym import spaces
 from multiplai.evals.nlu.data import WordIntentPair
@@ -36,6 +37,10 @@ class SingleExampleEnv(gym.Env):
     self._n_classes = n_classes
     self._n_symbols = n_symbols
 
+  def seed(self, seed=None):
+    self._rng, _seed = seeding.np_random(seed)
+    return _seed
+
   def step(self, action: int) -> Tuple[ActionT, ObservationT, bool, DebugInfoT]:
     obs = self._pairs[self._pair_idx].word_indices[self._symbol_idx]
 
@@ -56,8 +61,18 @@ class SingleExampleEnv(gym.Env):
 
   def reset(self):
     # Reset the state of the environment to an initial state
-    ...
+    self._symbol_idx = 0
+    self._pair_idx = self._rng.randint(0, len(self._pairs))
 
   def render(self, mode='human', close=False):
     # Render the environment to the screen
-    ...
+
+    print("%.render()" % self.__class__.__name__)
+    print(self._pairs[self._pair_idx])
+    print(self._symbol_idx)
+
+  def close(self):
+    pass
+
+
+
