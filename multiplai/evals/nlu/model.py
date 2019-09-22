@@ -54,6 +54,9 @@ class ClassifierRNN(Block):
         with self.name_scope():
             # self.embedding = word_embedding #nn.Embedding(input_size, hidden_size)
             self.embedding = emb.layer_for_embedding(word_embedding)
+
+            # FREEZE the embedding layer
+            # self.embedding.collect_params().setattr('grad_req', 'null')
             # TODO: assert somehow that the output size is the same
             # could use 'infer_shape' https://github.com/apache/incubator-mxnet/issues/1090
 

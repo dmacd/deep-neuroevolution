@@ -12,19 +12,36 @@ from mxnet.gluon import nn, rnn, Block
 from mxnet import ndarray as F
 from mxnet import ndarray as nd
 
+from gym import spaces
 from multiplai.evals.nlu import model
 from multiplai.evals.nlu import policy
 
 
 def test_policy_init(embedding):
 
-  n_labels = 10
-  classifier = model.ClassifierRNN(embedding, hidden_size=8,
-                                   max_labels=n_labels)
+  # n_labels = 10
+  # classifier = model.ClassifierRNN(embedding, hidden_size=8,
+  #                                  max_labels=n_labels)
+  #
+  # classifier.initialize(ctx=mx.cpu(), force_reinit=True)
+  #
+  # # force some params to be frozen
+  # classifier.embedding.collect_params().setattr('grad_req', 'null')
+  #
+  # p = policy.MxNetPolicyBase(block=classifier)
 
-  classifier.initialize(ctx=mx.cpu(), force_reinit=True)
+  p = policy.ClassifierPolicy(
+    observation_space=spaces.Discrete(
+    embedding.idx_to_vec.shape[0]),
+    action_space=spaces.Discrete(10)
+  )
 
-  p = policy.MxNetPolicy(block=classifier)
+  # print("trainable params:")
+  # print(p.collect_trainable_params())
+
+  # verify that frozen params dont show up in trainable params list
+  assert 'embedding' in [v for v in p.block.collect_params().values()][0].name
+  assert 'embedding' not in p.collect_trainable_params()[0].name
 
   # test getting from flat
   w_flat = p.get_trainable_flat()
@@ -62,3 +79,4 @@ def test_policy_init(embedding):
 def test_policy_rollout():
 
 
+  pass

@@ -3,6 +3,7 @@ import pickle
 import time
 
 import h5py
+from typing import List, Tuple, Set, Optional
 
 import numpy as np
 # import tensorflow as tf
@@ -14,20 +15,23 @@ from mxnet import gluon, autograd
 from mxnet.gluon import nn, rnn, Block
 from mxnet import ndarray as F
 from mxnet import ndarray as nd
+from gym import spaces
+
+from multiplai.evals.nlu import model
 
 log = logging.getLogger(__name__)
 
-class MxNetPolicy:
-  def __init__(self, block: Block, *args, **kwargs):
+class MxNetPolicyBase:
+  def __init__(self, *args, **kwargs):
     self.args, self.kwargs = args, kwargs
-    self.block = block
+    self.block = self._initialize(*args, **kwargs)
     self.ctx = mx.cpu()  # slight hack
 
-    log.info("All parameters (%d)" % len(block.collect_params()))
-    log.info(block.collect_params())
+    log.info("All parameters (%d)" % len(self.block.collect_params().keys()))
+    log.info(self.block.collect_params())
 
     # NEXT STEP:
-    # - trainable params only!!!!
+    # x trainable params only!!!!
     # - then implement and test rollout
 
     # self.scope = self._initialize(*args, **kwargs)
@@ -53,12 +57,16 @@ class MxNetPolicy:
     #     outputs=[],
     #     updates=[tf.group(*[v.assign(p) for v, p in zip(self.all_variables, placeholders)])]
     # )
+    
+  def collect_trainable_params(self) -> List[gluon.Parameter]:
+    return [p for p in self.block.collect_params().values()
+            if p.grad_req != 'null']
 
   def reinitialize(self):
     self.block.initialize(ctx=self.ctx, force_reinit=True)
 
-  # def _initialize(self, *args, **kwargs):
-  #     raise NotImplementedError
+  def _initialize(self, *args, **kwargs) -> gluon.Block:
+      raise NotImplementedError
 
   # def save(self, filename):
   #     assert filename.endswith('.h5')
@@ -92,26 +100,29 @@ class MxNetPolicy:
       'wrapper_config.TimeLimit.max_episode_steps')
     timestep_limit = env_timestep_limit if timestep_limit is None else min(
       timestep_limit, env_timestep_limit)
-    rews = []
+    rewards = []
     t = 0
+    
     if save_obs:
       obs = []
+      
     ob = env.reset()
     for _ in range(timestep_limit):
       ac = self.act(ob[None], random_stream=random_stream)[0]
       if save_obs:
         obs.append(ob)
       ob, rew, done, _ = env.step(ac)
-      rews.append(rew)
+      rewards.append(rew)
       t += 1
       if render:
         env.render()
       if done:
         break
-    rews = np.array(rews, dtype=np.float32)
+    rewards = np.array(rewards, dtype=np.float32)
+    
     if save_obs:
-      return rews, t, np.array(obs)
-    return rews, t
+      return rewards, t, np.array(obs)
+    return rewards, t
 
   def act(self, ob, random_stream=None):
     raise NotImplementedError
@@ -130,16 +141,50 @@ class MxNetPolicy:
     raise NotImplementedError
 
   def _get_from_flat(self) -> nd.array:
-    values = [v for v in self.block.collect_params().values()]
+    values = [v for v in self.collect_trainable_params()]
     flat = nd.concatenate([v.data().reshape((-1,)) for v in values])
     return flat
-
 
   def _set_from_flat(self, w_flat: np.array):
     # iterate over the collected parameters
     start = 0
-    for v in self.block.collect_params().values():
+    for v in self.collect_trainable_params():
       size = np.prod(v.shape)
       chunk = w_flat[start:start+size]
       v.set_data(chunk.reshape(v.shape))
       start += size
+      
+
+from multiplai.evals.nlu import data
+from multiplai.evals.nlu import embedding as emb
+
+
+class ClassifierPolicy(MxNetPolicyBase):
+  
+  def _initialize(self, observation_space: spaces.Discrete,
+                  action_space: spaces.Discrete,
+                  hidden_size=64) -> gluon.Block:
+
+    # HACK: TODO: initialize embedding without loading all the data!
+    # need to preprocessing the whole data space and save the
+    # embedding layer somewhere to accomplish this
+    # should probably obtain it from the environment itself, actually!
+
+    all_text, all_entities = data.get_train_data_text_and_entities(
+      data.load_train_data())
+
+    embedding = emb.get_embedding_for_text(all_text)
+
+    n_labels = action_space.n
+    assert len(observation_space.shape) == 0
+    assert embedding.idx_to_vec.shape[0] == observation_space.n
+
+    classifier = model.ClassifierRNN(embedding, hidden_size=hidden_size,
+                                     max_labels=n_labels)
+
+    classifier.initialize(ctx=mx.cpu(), force_reinit=True)
+
+    # force some params to be frozen
+    classifier.embedding.collect_params().setattr('grad_req', 'null')
+
+    return classifier
