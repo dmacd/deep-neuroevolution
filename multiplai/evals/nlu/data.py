@@ -2,6 +2,7 @@ import os
 import json
 import multiplai.base as base
 from dataclasses import dataclass
+import functools
 from mxnet import gluon
 from mxnet import nd
 from mxnet.contrib import text
@@ -31,6 +32,7 @@ def load_test_data(path=TEST_DATA_PATH):
   return load_data(path)
 
 
+# @functools.lru_cache(maxsize=128)
 def get_train_data_text_and_entities(train_data) -> Tuple[str, Set[str]]:
   all_entities = set()
   all_text = ""
@@ -120,6 +122,7 @@ def transpose_training_pair(pair: List[Tuple[int, int]]) -> Tuple[nd.array,
   return nd.array(tuple(zip(*pair)), dtype='int')
 
 
+# @functools.lru_cache(maxsize=128)
 def pairs_from_data(examples: List[Dict[str, str]],
                     all_entities: Set[str],
                     embedding: text.embedding.FastText) \
@@ -137,10 +140,12 @@ def pairs_from_data(examples: List[Dict[str, str]],
   return transposed_training_pairs
 
 
+
 @dataclass(frozen=True)
 class WordIntentPair():
   word_indices: nd.array
   class_indices: nd.array
+
 
   @classmethod
   def pairs_from_data(cls, examples, all_entities: Set[str], embedding) \

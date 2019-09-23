@@ -3,8 +3,9 @@ from mxnet import nd
 from mxnet.contrib import text
 import collections
 from typing import Set
+import functools
 
-
+@functools.lru_cache(maxsize=128)
 def get_embedding_for_text(text_data: str) -> text.embedding.FastText:
     counter = text.utils.count_tokens_from_str(text_data)
     vocab = text.vocab.Vocabulary(counter)

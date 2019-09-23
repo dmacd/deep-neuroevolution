@@ -1,0 +1,25 @@
+{
+  "config": {
+    "calc_obstat_prob": 0.0,
+    "episodes_per_batch": 5000,
+    "eval_prob": 0.01,
+    "l2coeff": 0.005,
+    "noise_stdev": 0.005,
+    "snapshot_freq": 4,
+    "timesteps_per_batch": 10000,
+    "return_proc_mode": "centered_rank",
+    "episode_cutoff_mode": 5000
+  },
+  "env_id": "NLU-Bench-SingleExample-GetWeather-v0",
+  "exp_prefix": "single_example_smoke_test",
+  "optimizer": {
+    "args": {
+      "stepsize": 0.01
+    },
+    "type": "adam"
+  },
+  "policy": {
+    "args" : {},
+    "type": "ClassifierPolicy"
+  }
+}

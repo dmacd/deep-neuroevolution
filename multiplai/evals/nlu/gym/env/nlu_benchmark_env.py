@@ -8,6 +8,11 @@ from gym import spaces
 from multiplai.evals.nlu.data import WordIntentPair
 from typing import List, Set, Tuple, Optional, Dict
 from mxnet import ndarray as nd
+from multiplai.evals.nlu import data
+from multiplai.evals.nlu import embedding as emb
+from multiplai.evals.nlu.data import WordIntentPair
+from multiplai.evals.nlu.gym.env import nlu_benchmark_env
+
 
 # start with single instance classification task
 # todo: add env_args to config and init code
@@ -17,8 +22,7 @@ RewardT = float
 ObservationT = Optional[nd.array]
 DebugInfoT = Dict
 
-
-class SingleExampleEnv(gym.Env):
+class SingleExampleEnvBase(gym.Env):
   """Env that reinforces correct classification of a single nlu training
   example"""
   metadata = {'render.modes': ['human']}
@@ -26,7 +30,7 @@ class SingleExampleEnv(gym.Env):
   def __init__(self, pairs: List[WordIntentPair],
                n_symbols: int,
                n_classes: int):
-    super(SingleExampleEnv, self).__init__()
+    super(SingleExampleEnvBase, self).__init__()
 
     self.observation_space = spaces.Discrete(n_symbols)
     self.action_space = spaces.Discrete(n_classes)
@@ -43,6 +47,8 @@ class SingleExampleEnv(gym.Env):
     self._last_action: Optional[ActionT] = None
     self._last_reward: Optional[float] = None
     self._last_observation: Optional[ObservationT] = None
+
+    self.seed(0)
 
   def seed(self, seed=None):
     self._rng, _seed = seeding.np_random(seed)
@@ -94,5 +100,29 @@ class SingleExampleEnv(gym.Env):
   def close(self):
     pass
 
+
+################################################################################
+## concrete environments
+
+class SingleExample_GetWeather(SingleExampleEnvBase):
+  def __init__(self):
+
+    train_data = data.load_train_data()
+
+    all_text, all_entities = data.get_train_data_text_and_entities(
+      train_data)
+
+    embedding = emb.get_embedding_for_text(all_text)
+
+    pairs = WordIntentPair.pairs_from_data(train_data['GetWeather'],
+                                           all_entities=all_entities,
+                                           embedding=embedding)
+
+    n_words = len(embedding.token_to_idx.keys())
+    n_labels = len(all_entities)
+
+    super().__init__(pairs=pairs,
+                     n_symbols=n_words,
+                     n_classes=n_labels)
 
 

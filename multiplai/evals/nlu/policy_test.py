@@ -1,7 +1,6 @@
 import logging
 import pickle
 import time
-
 import h5py
 
 import numpy as np
@@ -19,25 +18,16 @@ from multiplai.evals.nlu import policy
 
 def test_policy_init(embedding):
 
-  # n_labels = 10
-  # classifier = model.ClassifierRNN(embedding, hidden_size=8,
-  #                                  max_labels=n_labels)
-  #
-  # classifier.initialize(ctx=mx.cpu(), force_reinit=True)
-  #
-  # # force some params to be frozen
-  # classifier.embedding.collect_params().setattr('grad_req', 'null')
-  #
-  # p = policy.MxNetPolicyBase(block=classifier)
-
   p = policy.ClassifierPolicy(
     observation_space=spaces.Discrete(
     embedding.idx_to_vec.shape[0]),
     action_space=spaces.Discrete(10)
   )
 
-  # print("trainable params:")
-  # print(p.collect_trainable_params())
+  print("trainable params:")
+  print(p.collect_trainable_params())
+
+  print('total num trainable params:', p.num_params)
 
   # verify that frozen params dont show up in trainable params list
   assert 'embedding' in [v for v in p.block.collect_params().values()][0].name
@@ -52,30 +42,22 @@ def test_policy_init(embedding):
   # test setting from flat
   p.set_trainable_flat(w_flat_incremented)
 
-  assert np.allclose(p.get_trainable_flat().asnumpy(),
-    w_flat_incremented.asnumpy())
+  assert np.allclose(p.get_trainable_flat(),
+    w_flat_incremented)
 
 
   w_flat_incremented[100] += 2
   p.set_trainable_flat(w_flat_incremented)
 
-  assert np.isclose(3, p.get_trainable_flat().asnumpy()[100] -
-                    w_flat.asnumpy()[100])
+  assert np.isclose(3, p.get_trainable_flat()[100] -
+                    w_flat[100])
 
 
   # test initialization
-
   w_flat = p.get_trainable_flat()
   p.reinitialize()
 
-  assert not np.allclose(w_flat.asnumpy(), p.get_trainable_flat().asnumpy())
-
-  # NEXT STEP:
-  # select only TRAINABLE parameters instead of ALL parameters. blech
-
-
-# test rollout
-
+  assert not np.allclose(w_flat, p.get_trainable_flat())
 
 def test_policy_act(single_example_env, embedding):
   env = single_example_env
@@ -105,4 +87,39 @@ def test_policy_rollout(single_example_env, embedding):
 
 # next tests
 # - check env seeding / resetting works properly when reused many times
+#    - looks like es was designed to run the same environment on different
+#    params
+#     - > implies that we'll want a multi-example env instead of a single
+#     example
+#     - the multi example presentation should still be build on top of a test
+#     single example
+#     - expect single example to converge rapidly to max reward on the (
+#     identical) single example
+
 # - test in context?
+#
+
+# - >>> test load and save properly and carefully!!!
+
+def test_policy_serialization(single_example_env):
+
+  env = single_example_env
+
+  p = policy.ClassifierPolicy(
+    observation_space=env.observation_space,
+    action_space=env.action_space
+  )
+
+  import tempfile
+  fd, fname = tempfile.mkstemp(prefix="policy_serialization_test")
+
+
+  # tweak some weight by a little just to be sure
+  # i.e. set all elements of each param to its index in the param list
+
+
+  p.save(fname)
+
+  # load a new policy from the file
+
+  # check that the tweaked weights were right

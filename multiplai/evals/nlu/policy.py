@@ -18,6 +18,8 @@ from mxnet import ndarray as nd
 from gym import spaces
 
 from multiplai.evals.nlu import model
+from multiplai.evals.nlu import data
+from multiplai.evals.nlu import embedding as emb
 
 log = logging.getLogger(__name__)
 
@@ -57,6 +59,12 @@ class MxNetPolicyBase:
     #     outputs=[],
     #     updates=[tf.group(*[v.assign(p) for v, p in zip(self.all_variables, placeholders)])]
     # )
+
+    self._num_params = np.prod(self.get_trainable_flat().shape)
+
+  @property
+  def num_params(self):
+    return self._num_params
     
   def collect_trainable_params(self) -> List[gluon.Parameter]:
     return [p for p in self.block.collect_params().values()
@@ -103,14 +111,16 @@ class MxNetPolicyBase:
     try:
       env_timestep_limit = env.spec.tags.get(
         'wrapper_config.TimeLimit.max_episode_steps')
-      timestep_limit = env_timestep_limit if timestep_limit is None else min(
-        timestep_limit, env_timestep_limit)
+      if env_timestep_limit is not None:
+        timestep_limit = env_timestep_limit if timestep_limit is None else min(
+          timestep_limit, env_timestep_limit)
 
     except AttributeError as e:
       assert timestep_limit is not None
-      env_timestep_limit = timestep_limit
+      #env_timestep_limit = timestep_limit
 
     rewards = []
+    novelty_vector = []
     t = 0
     
     if save_obs:
@@ -141,7 +151,7 @@ class MxNetPolicyBase:
     
     if save_obs:
       return rewards, t, np.array(obs)
-    return rewards, t
+    return rewards, t, novelty_vector
 
   def act(self, observation, random_stream=None):
     raise NotImplementedError
@@ -156,13 +166,17 @@ class MxNetPolicyBase:
   def needs_ob_stat(self):
     raise NotImplementedError
 
+  @property
+  def needs_ref_batch(self):
+    raise NotImplementedError
+
   def set_ob_stat(self, ob_mean, ob_std):
     raise NotImplementedError
 
-  def _get_from_flat(self) -> nd.array:
+  def _get_from_flat(self) -> np.array:
     values = [v for v in self.collect_trainable_params()]
     flat = nd.concatenate([v.data().reshape((-1,)) for v in values])
-    return flat
+    return flat.asnumpy()
 
   def _set_from_flat(self, w_flat: np.array):
     # iterate over the collected parameters
@@ -172,15 +186,38 @@ class MxNetPolicyBase:
       chunk = w_flat[start:start+size]
       v.set_data(chunk.reshape(v.shape))
       start += size
-      
 
-from multiplai.evals.nlu import data
-from multiplai.evals.nlu import embedding as emb
+  def save(self, filename):
+      assert filename.endswith('.h5')
+      with h5py.File(filename, 'w', libver='latest') as f:
+          for v in self.block.collect_params().values():
+              f[v.name] = v.data
+          # TODO: it would be nice to avoid pickle, but it's convenient to pass Python objects to _initialize
+          # (like Gym spaces or numpy arrays)
+          f.attrs['name'] = type(self).__name__
+          f.attrs['args_and_kwargs'] = np.void(pickle.dumps((self.args, self.kwargs), protocol=-1))
+
+  @classmethod
+  def Load(cls, filename, extra_kwargs=None):
+      with h5py.File(filename, 'r') as f:
+          args, kwargs = pickle.loads(f.attrs['args_and_kwargs'].tostring())
+          if extra_kwargs:
+              kwargs.update(extra_kwargs)
+          policy = cls(*args, **kwargs)
+          # policy.set_all_vars(*[f[v.name][...] for v in policy.all_variables])
+          all_params = policy.block.collect_params()
+          for k,v in f:
+            if k in all_params:
+              all_params[k].set_data(v)
+
+      return policy
+
+
+
 
 # FUCK. lame. need stubs for mxnet to do better apparently :/
 ObservationT = Any
 ActionT = int
-
 
 class ClassifierPolicy(MxNetPolicyBase):
 
@@ -229,3 +266,11 @@ class ClassifierPolicy(MxNetPolicyBase):
     # action = nd.argmax(classifier_outputs)
     action = nd.argmax(classifier_outputs, axis=1).asscalar()
     return action
+
+  @property
+  def needs_ob_stat(self):
+    return False
+
+  @property
+  def needs_ref_batch(self):
+    return False

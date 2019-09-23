@@ -40,7 +40,7 @@ def single_example_env(train_data, embedding, all_entities):
   n_words = len(embedding.token_to_idx.keys())
   n_labels = len(all_entities)
 
-  env = nlu_benchmark_env.SingleExampleEnv(pairs=pairs,
+  env = nlu_benchmark_env.SingleExampleEnvBase(pairs=pairs,
                        n_symbols=n_words,
                        n_classes=n_labels)
   return env

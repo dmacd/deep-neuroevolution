@@ -22,6 +22,20 @@ killall redis-server
 . scripts/local_run_redis.sh
 ```
 
+- Redis state not reset by the default script?
+
+This seems like it should work but doesnt...use the reset incantations above
+ to flush redis when its got stale stuff in it
+```
+redis-cli KEYS '*'
+redis-cli FLUSHALL
+redis-cli KEYS '*'
+```
+
+Kill zombie worker and master processes
+`pkill -f es_distributed`
+
+
 #### TODO
 There is probably a way to run redis server without root that creates sockets
  my user can read and write. https://serverfault.com/questions/711566/redis

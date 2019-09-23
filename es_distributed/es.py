@@ -123,6 +123,14 @@ def batched_weighted_sum(weights, vecs, batch_size):
 
 
 def setup(exp, single_threaded):
+    ############################################################################
+    ## multiplai
+
+    # inject gym registrations
+    import multiplai.evals.nlu.gym
+
+    ############################################################################
+
     import gym
     gym.undo_logger_setup()
     from . import policies, tf_util
@@ -133,7 +141,21 @@ def setup(exp, single_threaded):
         from .atari_wrappers import wrap_deepmind
         env = wrap_deepmind(env)
     sess = make_session(single_threaded=single_threaded)
-    policy = getattr(policies, exp['policy']['type'])(env.observation_space, env.action_space, **exp['policy']['args'])
+
+    policy_type_name = exp['policy']['type']
+
+    if policy_type_name in policies.__dict__:
+        policy_type = getattr(policies, policy_type_name)
+    else:
+        logger.info("Could not find %s in base policies, looking in "
+                    "multiplai.nlu.policy" % policy_type_name)
+        import multiplai.evals.nlu.policy as nlu_policies
+        policy_type = getattr(nlu_policies, policy_type_name)
+        logger.info("Found policy type %s" % policy_type)
+
+    policy = policy_type(env.observation_space, env.action_space,
+                         **exp['policy']['args'])
+
     tf_util.initialize()
     return config, env, sess, policy
 
@@ -376,6 +398,7 @@ def run_worker(master_redis_cfg, relay_redis_cfg, noise, *, min_task_runtime=.2)
 
     while True:
         task_id, task_data = worker.get_current_task()
+        logging.info('task_data: \n%s' % str(task_data))
         task_tstart = time.time()
         assert isinstance(task_id, int) and isinstance(task_data, Task)
 
