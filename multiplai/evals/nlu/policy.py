@@ -3,7 +3,7 @@ import pickle
 import time
 
 import h5py
-from typing import List, Tuple, Set, Optional
+from typing import List, Tuple, Set, Optional, Any
 
 import numpy as np
 # import tensorflow as tf
@@ -65,6 +65,7 @@ class MxNetPolicyBase:
   def reinitialize(self):
     self.block.initialize(ctx=self.ctx, force_reinit=True)
 
+  # type: ignore
   def _initialize(self, *args, **kwargs) -> gluon.Block:
       raise NotImplementedError
 
@@ -96,10 +97,19 @@ class MxNetPolicyBase:
     If random_stream is provided, the rollout will take noisy actions with noise drawn from that stream.
     Otherwise, no action noise will be added.
     """
-    env_timestep_limit = env.spec.tags.get(
-      'wrapper_config.TimeLimit.max_episode_steps')
-    timestep_limit = env_timestep_limit if timestep_limit is None else min(
-      timestep_limit, env_timestep_limit)
+
+
+    # HACK: configure timestep limits later
+    try:
+      env_timestep_limit = env.spec.tags.get(
+        'wrapper_config.TimeLimit.max_episode_steps')
+      timestep_limit = env_timestep_limit if timestep_limit is None else min(
+        timestep_limit, env_timestep_limit)
+
+    except AttributeError as e:
+      assert timestep_limit is not None
+      env_timestep_limit = timestep_limit
+
     rewards = []
     t = 0
     
@@ -108,7 +118,16 @@ class MxNetPolicyBase:
       
     ob = env.reset()
     for _ in range(timestep_limit):
-      ac = self.act(ob[None], random_stream=random_stream)[0]
+
+      # NB: DEPARTURE FROM NORM IN ES CODEBASE
+      # do NOT alter the observation returned from the env
+      # let the policy deal with it in its raw form
+
+      ac = self.act(
+        #ob[None],   # prepends a new axis
+        ob,          # do nothing, can handle non-array observations
+        random_stream=random_stream) #[0]
+
       if save_obs:
         obs.append(ob)
       ob, rew, done, _ = env.step(ac)
@@ -124,7 +143,7 @@ class MxNetPolicyBase:
       return rewards, t, np.array(obs)
     return rewards, t
 
-  def act(self, ob, random_stream=None):
+  def act(self, observation, random_stream=None):
     raise NotImplementedError
 
   def set_trainable_flat(self, x: np.array):
@@ -158,10 +177,15 @@ class MxNetPolicyBase:
 from multiplai.evals.nlu import data
 from multiplai.evals.nlu import embedding as emb
 
+# FUCK. lame. need stubs for mxnet to do better apparently :/
+ObservationT = Any
+ActionT = int
+
 
 class ClassifierPolicy(MxNetPolicyBase):
-  
-  def _initialize(self, observation_space: spaces.Discrete,
+
+  def _initialize(self,  # type: ignore
+                  observation_space: spaces.Discrete,
                   action_space: spaces.Discrete,
                   hidden_size=64) -> gluon.Block:
 
@@ -170,6 +194,7 @@ class ClassifierPolicy(MxNetPolicyBase):
     # embedding layer somewhere to accomplish this
     # should probably obtain it from the environment itself, actually!
 
+    self._ctx = mx.cpu()
     all_text, all_entities = data.get_train_data_text_and_entities(
       data.load_train_data())
 
@@ -182,9 +207,25 @@ class ClassifierPolicy(MxNetPolicyBase):
     classifier = model.ClassifierRNN(embedding, hidden_size=hidden_size,
                                      max_labels=n_labels)
 
-    classifier.initialize(ctx=mx.cpu(), force_reinit=True)
+    classifier.initialize(ctx=self._ctx, force_reinit=True)
 
     # force some params to be frozen
     classifier.embedding.collect_params().setattr('grad_req', 'null')
 
+    self._hidden = classifier.init_hidden(self._ctx)
+
     return classifier
+
+  def act(self, observation: ObservationT, random_stream=None) -> ActionT:
+
+    assert observation is not None
+    classifier = self.block
+
+    classifier_outputs, classifier_hidden = classifier(
+      observation.expand_dims(0), self._hidden)
+
+    self._hidden = classifier_hidden
+
+    # action = nd.argmax(classifier_outputs)
+    action = nd.argmax(classifier_outputs, axis=1).asscalar()
+    return action

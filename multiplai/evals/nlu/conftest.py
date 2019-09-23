@@ -1,6 +1,8 @@
 import pytest
 from multiplai.evals.nlu import data
 from multiplai.evals.nlu import embedding as emb
+from multiplai.evals.nlu.data import WordIntentPair
+from multiplai.evals.nlu.gym.env import nlu_benchmark_env
 
 @pytest.fixture(scope='session')
 def train_data():
@@ -28,3 +30,17 @@ def train_pairs(train_data, embedding, all_entities):
                                         embedding=embedding)
   return training_pairs
 
+
+@pytest.fixture
+def single_example_env(train_data, embedding, all_entities):
+  pairs = WordIntentPair.pairs_from_data(train_data['GetWeather'],
+                                         all_entities=all_entities,
+                                         embedding=embedding)
+
+  n_words = len(embedding.token_to_idx.keys())
+  n_labels = len(all_entities)
+
+  env = nlu_benchmark_env.SingleExampleEnv(pairs=pairs,
+                       n_symbols=n_words,
+                       n_classes=n_labels)
+  return env

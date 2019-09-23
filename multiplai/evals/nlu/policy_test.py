@@ -76,7 +76,33 @@ def test_policy_init(embedding):
 
 # test rollout
 
-def test_policy_rollout():
+
+def test_policy_act(single_example_env, embedding):
+  env = single_example_env
+
+  p = policy.ClassifierPolicy(
+    observation_space=env.observation_space,
+    action_space=env.action_space
+  )
+  _action = p.act(observation=nd.array([0]))
 
 
-  pass
+
+def test_policy_rollout(single_example_env, embedding):
+
+  env = single_example_env
+
+  p = policy.ClassifierPolicy(
+    observation_space=env.observation_space,
+    action_space=env.action_space
+  )
+
+
+  env.seed(0)
+  p.rollout(env, render=True, timestep_limit=100,
+            save_obs=True, random_stream=None)
+
+
+# next tests
+# - check env seeding / resetting works properly when reused many times
+# - test in context?
