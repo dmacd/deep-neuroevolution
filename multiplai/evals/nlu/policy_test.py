@@ -101,25 +101,46 @@ def test_policy_rollout(single_example_env, embedding):
 
 # - >>> test load and save properly and carefully!!!
 
+
+# >>>>>> START HERE
+#  -- figure out why h5 file thinks its closed on load!!
+
 def test_policy_serialization(single_example_env):
 
   env = single_example_env
 
   p = policy.ClassifierPolicy(
     observation_space=env.observation_space,
-    action_space=env.action_space
+    action_space=env.action_space,
+    # kwargs for testing roundtrip
+    hidden_size=5
   )
 
   import tempfile
-  fd, fname = tempfile.mkstemp(prefix="policy_serialization_test")
+  fd, fname = tempfile.mkstemp(prefix="policy_serialization_test",
+                               suffix=".h5")
 
 
   # tweak some weight by a little just to be sure
   # i.e. set all elements of each param to its index in the param list
 
 
+  w_flat = p.get_trainable_flat()
+
+  w_flat[0:100] = 7.77
+  p.set_trainable_flat(w_flat)
   p.save(fname)
 
   # load a new policy from the file
 
+  p_loaded = policy.ClassifierPolicy.Load(fname)
+
   # check that the tweaked weights were right
+
+  assert np.allclose(p_loaded.get_trainable_flat(), w_flat)
+  assert np.allclose(p_loaded.get_trainable_flat()[0:100], 7.77)
+
+  print('loaded args:', p_loaded.args)
+  print('loaded kwargs:', p_loaded.kwargs)
+  assert p_loaded.args == p.args
+  assert p_loaded.kwargs == p.kwargs

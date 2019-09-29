@@ -1,3 +1,4 @@
+import os
 import logging
 import pickle
 import time
@@ -22,6 +23,7 @@ from multiplai.evals.nlu import data
 from multiplai.evals.nlu import embedding as emb
 
 log = logging.getLogger(__name__)
+
 
 class MxNetPolicyBase:
   def __init__(self, *args, **kwargs):
@@ -65,7 +67,7 @@ class MxNetPolicyBase:
   @property
   def num_params(self):
     return self._num_params
-    
+
   def collect_trainable_params(self) -> List[gluon.Parameter]:
     return [p for p in self.block.collect_params().values()
             if p.grad_req != 'null']
@@ -75,7 +77,7 @@ class MxNetPolicyBase:
 
   # type: ignore
   def _initialize(self, *args, **kwargs) -> gluon.Block:
-      raise NotImplementedError
+    raise NotImplementedError
 
   # def save(self, filename):
   #     assert filename.endswith('.h5')
@@ -106,7 +108,6 @@ class MxNetPolicyBase:
     Otherwise, no action noise will be added.
     """
 
-
     # HACK: configure timestep limits later
     try:
       env_timestep_limit = env.spec.tags.get(
@@ -117,15 +118,15 @@ class MxNetPolicyBase:
 
     except AttributeError as e:
       assert timestep_limit is not None
-      #env_timestep_limit = timestep_limit
+      # env_timestep_limit = timestep_limit
 
     rewards = []
     novelty_vector = []
     t = 0
-    
+
     if save_obs:
       obs = []
-      
+
     ob = env.reset()
     for _ in range(timestep_limit):
 
@@ -134,9 +135,9 @@ class MxNetPolicyBase:
       # let the policy deal with it in its raw form
 
       ac = self.act(
-        #ob[None],   # prepends a new axis
-        ob,          # do nothing, can handle non-array observations
-        random_stream=random_stream) #[0]
+        # ob[None],   # prepends a new axis
+        ob,  # do nothing, can handle non-array observations
+        random_stream=random_stream)  # [0]
 
       if save_obs:
         obs.append(ob)
@@ -148,7 +149,7 @@ class MxNetPolicyBase:
       if done:
         break
     rewards = np.array(rewards, dtype=np.float32)
-    
+
     if save_obs:
       return rewards, t, np.array(obs)
     return rewards, t, novelty_vector
@@ -183,41 +184,59 @@ class MxNetPolicyBase:
     start = 0
     for v in self.collect_trainable_params():
       size = np.prod(v.shape)
-      chunk = w_flat[start:start+size]
+      chunk = w_flat[start:start + size]
       v.set_data(chunk.reshape(v.shape))
       start += size
 
   def save(self, filename):
-      assert filename.endswith('.h5')
-      with h5py.File(filename, 'w', libver='latest') as f:
-          for v in self.block.collect_params().values():
-              f[v.name] = v.data
-          # TODO: it would be nice to avoid pickle, but it's convenient to pass Python objects to _initialize
-          # (like Gym spaces or numpy arrays)
-          f.attrs['name'] = type(self).__name__
-          f.attrs['args_and_kwargs'] = np.void(pickle.dumps((self.args, self.kwargs), protocol=-1))
+    assert filename.endswith('.h5')
+
+    with h5py.File(filename, 'w', libver='latest') as f:
+
+      # for v in self.block.collect_params().values():
+      #   f[v.name] = v.data().asnumpy()
+
+      # TODO: it would be nice to avoid pickle, but it's convenient to pass Python objects to _initialize
+      # (like Gym spaces or numpy arrays)
+      f.attrs['name'] = type(self).__name__
+      f.attrs['args_and_kwargs'] = np.void(
+        pickle.dumps((self.args, self.kwargs), protocol=-1))
+
+    # HACK: just make two files
+    # COULD stuff mxnet stuff inside of h5 efficiently with a memory tempfile
+    # but this is kind of lame
+    # https://pypi.org/project/memory-tempfile/
+    self.block.save_parameters(os.path.splitext(filename)[0] + '.mxnet')
 
   @classmethod
   def Load(cls, filename, extra_kwargs=None):
-      with h5py.File(filename, 'r') as f:
-          args, kwargs = pickle.loads(f.attrs['args_and_kwargs'].tostring())
-          if extra_kwargs:
-              kwargs.update(extra_kwargs)
-          policy = cls(*args, **kwargs)
-          # policy.set_all_vars(*[f[v.name][...] for v in policy.all_variables])
-          all_params = policy.block.collect_params()
-          for k,v in f:
-            if k in all_params:
-              all_params[k].set_data(v)
 
-      return policy
+    with h5py.File(filename, 'r') as f:
+      # print("opened %s" % filename)
+      # print(f)
+      # print("file keys: %s" %  list(f.keys()))
+      args, kwargs = pickle.loads(f.attrs['args_and_kwargs'].tostring())
+      if extra_kwargs:
+        kwargs.update(extra_kwargs)
 
+      policy = cls(*args, **kwargs)
 
+      #policy.block.load_parameters()
+      # all_params = policy.block.collect_params()
+      #
+      # # hack: could just remap the stupid global toplevel deal here
+      # for param in all_params.values():
+      #   param.set_data(f[param.name])
+
+    policy.block.load_parameters(os.path.splitext(filename)[0] + '.mxnet')
+
+    return policy
 
 
 # FUCK. lame. need stubs for mxnet to do better apparently :/
 ObservationT = Any
 ActionT = int
+
 
 class ClassifierPolicy(MxNetPolicyBase):
 
@@ -225,7 +244,6 @@ class ClassifierPolicy(MxNetPolicyBase):
                   observation_space: spaces.Discrete,
                   action_space: spaces.Discrete,
                   hidden_size=64) -> gluon.Block:
-
     # HACK: TODO: initialize embedding without loading all the data!
     # need to preprocessing the whole data space and save the
     # embedding layer somewhere to accomplish this
@@ -254,7 +272,6 @@ class ClassifierPolicy(MxNetPolicyBase):
     return classifier
 
   def act(self, observation: ObservationT, random_stream=None) -> ActionT:
-
     assert observation is not None
     classifier = self.block
 
