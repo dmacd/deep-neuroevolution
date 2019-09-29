@@ -99,12 +99,6 @@ def test_policy_rollout(single_example_env, embedding):
 # - test in context?
 #
 
-# - >>> test load and save properly and carefully!!!
-
-
-# >>>>>> START HERE
-#  -- figure out why h5 file thinks its closed on load!!
-
 def test_policy_serialization(single_example_env):
 
   env = single_example_env

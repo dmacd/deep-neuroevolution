@@ -193,18 +193,15 @@ class MxNetPolicyBase:
 
     with h5py.File(filename, 'w', libver='latest') as f:
 
-      # for v in self.block.collect_params().values():
-      #   f[v.name] = v.data().asnumpy()
-
       # TODO: it would be nice to avoid pickle, but it's convenient to pass Python objects to _initialize
       # (like Gym spaces or numpy arrays)
       f.attrs['name'] = type(self).__name__
       f.attrs['args_and_kwargs'] = np.void(
         pickle.dumps((self.args, self.kwargs), protocol=-1))
 
-    # HACK: just make two files
-    # COULD stuff mxnet stuff inside of h5 efficiently with a memory tempfile
-    # but this is kind of lame
+    # SLIGHT HACK: just make two files
+    # if it becomes onerous, COULD stuff mxnet stuff inside of h5 efficiently
+    # with a memory tempfile but this is kind of lame:
     # https://pypi.org/project/memory-tempfile/
     self.block.save_parameters(os.path.splitext(filename)[0] + '.mxnet')
 
@@ -212,21 +209,11 @@ class MxNetPolicyBase:
   def Load(cls, filename, extra_kwargs=None):
 
     with h5py.File(filename, 'r') as f:
-      # print("opened %s" % filename)
-      # print(f)
-      # print("file keys: %s" %  list(f.keys()))
       args, kwargs = pickle.loads(f.attrs['args_and_kwargs'].tostring())
       if extra_kwargs:
         kwargs.update(extra_kwargs)
 
       policy = cls(*args, **kwargs)
-
-      #policy.block.load_parameters()
-      # all_params = policy.block.collect_params()
-      #
-      # # hack: could just remap the stupid global toplevel deal here
-      # for param in all_params.values():
-      #   param.set_data(f[param.name])
 
     policy.block.load_parameters(os.path.splitext(filename)[0] + '.mxnet')
 
