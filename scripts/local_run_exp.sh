@@ -4,6 +4,8 @@ ALGO=$1
 EXP_FILE=$2
 MODULE='es_distributed.main'
 NUM_WORKERS=4
+LOG_DIR='logs/'
+
 
 MASTER_COMMAND=$(cat <<XXX
 python -m ${MODULE} master \

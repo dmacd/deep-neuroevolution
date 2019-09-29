@@ -55,7 +55,19 @@ def master(algo, exp_str, exp_file, master_socket_path, log_dir):
             exp = json.loads(f.read())
     else:
         assert False
-    log_dir = os.path.expanduser(log_dir) if log_dir else '/tmp/es_master_{}'.format(os.getpid())
+
+    import datetime
+
+    # default_log_dir = '/tmp/es_master_{}'.format(os.getpid())
+    default_log_dir = os.path.join(os.path.dirname(__file__), '..', 'logs',
+                 datetime.datetime.now().isoformat().replace('T', '_'),
+                 algo, 'master')
+
+    log_dir = os.path.expanduser(log_dir) \
+        if log_dir else default_log_dir
+
+
+
     mkdir_p(log_dir)
     algo = import_algo(algo)
     algo.run_master({'unix_socket_path': master_socket_path}, log_dir, exp)
@@ -76,7 +88,9 @@ def workers(algo, master_host, master_port, relay_socket_path, num_workers):
         return
     # Start the workers
     algo = import_algo(algo)
-    noise = algo.SharedNoiseTable()  # Workers share the same noise
+
+    # Workers share the same noise
+    noise = algo.SharedNoiseTable()
     num_workers = num_workers if num_workers else os.cpu_count()
     logging.info('Spawning {} workers'.format(num_workers))
     for _ in range(num_workers):

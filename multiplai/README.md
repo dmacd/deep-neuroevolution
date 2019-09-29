@@ -36,6 +36,14 @@ Kill zombie worker and master processes
 `pkill -f es_distributed`
 
 
+## local visualization
+
+Default logdir is `logs/`
+
+Start tensorboard: 
+`tensorboard --logdir logs/`
+
+
 #### TODO
 There is probably a way to run redis server without root that creates sockets
  my user can read and write. https://serverfault.com/questions/711566/redis
