@@ -36,7 +36,7 @@ Kill zombie worker and master processes
 `pkill -f es_distributed`
 
 
-## local visualization
+## local training visualization
 
 Default logdir is `logs/`
 

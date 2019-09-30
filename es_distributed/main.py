@@ -66,8 +66,6 @@ def master(algo, exp_str, exp_file, master_socket_path, log_dir):
     log_dir = os.path.expanduser(log_dir) \
         if log_dir else default_log_dir
 
-
-
     mkdir_p(log_dir)
     algo = import_algo(algo)
     algo.run_master({'unix_socket_path': master_socket_path}, log_dir, exp)

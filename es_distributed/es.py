@@ -2,7 +2,7 @@ import logging
 import time
 from collections import namedtuple
 
-
+from typing import Type
 import numpy as np
 
 from .dist import MasterClient, WorkerClient
@@ -128,6 +128,22 @@ def batched_weighted_sum(weights, vecs, batch_size):
     return total, num_items_summed
 
 
+from . import policies, tf_util
+
+def get_policy_type(policy_type_name: str) -> Type:
+
+    # policy_type_name = exp['policy']['type']
+
+    if policy_type_name in policies.__dict__:
+        policy_type = getattr(policies, policy_type_name)
+    else:
+        logger.info("Could not find %s in base policies, looking in "
+                    "multiplai.nlu.policy" % policy_type_name)
+        import multiplai.evals.nlu.policy as nlu_policies
+        policy_type = getattr(nlu_policies, policy_type_name)
+        logger.info("Found policy type %s" % policy_type)
+    return policy_type
+
 def setup(exp, single_threaded):
     ############################################################################
     ## multiplai
@@ -139,7 +155,6 @@ def setup(exp, single_threaded):
 
     import gym
     gym.undo_logger_setup()
-    from . import policies, tf_util
 
     config = Config(**exp['config'])
     env = gym.make(exp['env_id'])
@@ -148,16 +163,7 @@ def setup(exp, single_threaded):
         env = wrap_deepmind(env)
     sess = make_session(single_threaded=single_threaded)
 
-    policy_type_name = exp['policy']['type']
-
-    if policy_type_name in policies.__dict__:
-        policy_type = getattr(policies, policy_type_name)
-    else:
-        logger.info("Could not find %s in base policies, looking in "
-                    "multiplai.nlu.policy" % policy_type_name)
-        import multiplai.evals.nlu.policy as nlu_policies
-        policy_type = getattr(nlu_policies, policy_type_name)
-        logger.info("Found policy type %s" % policy_type)
+    policy_type = get_policy_type(exp['policy']['type'])
 
     policy = policy_type(env.observation_space, env.action_space,
                          **exp['policy']['args'])
@@ -372,10 +378,10 @@ def run_master(master_redis_cfg, log_dir, exp):
 
         if config.snapshot_freq != 0 and curr_task_id % config.snapshot_freq == 0:
             import os.path as osp
-            filename = 'snapshot_iter{:05d}_rew{}.h5'.format(
+            filename = osp.join(log_dir, 'snapshot_iter{:05d}_rew{}.h5'.format(
                 curr_task_id,
                 np.nan if not eval_rets else int(np.mean(eval_rets))
-            )
+            ))
             assert not osp.exists(filename)
             policy.save(filename)
             tlogger.log('Saved snapshot {}'.format(filename))
