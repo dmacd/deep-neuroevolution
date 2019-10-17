@@ -50,8 +50,8 @@ class RunningStat(object):
 
 class SharedNoiseTable(object):
 
-    # DEFAULT_SIZE = 250000000
-    DEFAULT_SIZE = 2500000
+    DEFAULT_SIZE = 250000000
+    # DEFAULT_SIZE = 2500000
 
     def __init__(self, size=DEFAULT_SIZE):
         import ctypes, multiprocessing

@@ -58,10 +58,14 @@ class SingleExampleEnvBase(gym.Env):
                                            DebugInfoT]:
     self._last_action = action
     correct_class = self._pairs[self._pair_idx].class_indices[self._symbol_idx]
+
+    reward = 0
     if action == correct_class:
-      reward = 1
+      reward += 1
+      if action != 0:
+        reward += 3   # boost for exploration?
     else:
-      reward = -1
+      reward += -1
 
     self._symbol_idx += 1
 

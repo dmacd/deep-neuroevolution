@@ -12,6 +12,13 @@
   },
   "env_id": "NLU-Bench-SingleExample-GetWeather-v0",
   "exp_prefix": "single_example_smoke_test",
+  "algo_type": "nsr",
+  "novelty_search": {
+    "k": 10,
+    "population_size": 3,
+    "num_rollouts": 1,
+    "selection_method": "novelty_prob"
+  },
   "optimizer": {
     "args": {
       "stepsize": 0.01
