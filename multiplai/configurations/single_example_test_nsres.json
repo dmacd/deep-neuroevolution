@@ -2,11 +2,11 @@
   "config": {
     "calc_obstat_prob": 0.0,
     "episodes_per_batch": 1000,
-    "eval_prob": 0.01,
+    "eval_prob": 0.1,
     "l2coeff": 0.005,
-    "noise_stdev": 0.5,
-    "snapshot_freq": 4,
-    "timesteps_per_batch": 12000,
+    "noise_stdev": 0.4,
+    "snapshot_freq": 10,
+    "timesteps_per_batch": 10000,
     "return_proc_mode": "centered_rank",
     "episode_cutoff_mode": 5000
   },

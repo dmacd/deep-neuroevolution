@@ -139,6 +139,15 @@ class MxNetPolicyBase:
         ob,  # do nothing, can handle non-array observations
         random_stream=random_stream)  # [0]
 
+      # here the "state" of the environment is determined completely
+      # by the action sequence and there is no other measure of novelty, really
+      # use the action sequence as the novelty vector
+      novelty_vector.append(ac)
+
+      # future idea:
+      # terminate episodes after the first mistake
+      # episode length would then be a potential novelty metric
+
       if save_obs:
         obs.append(ob)
       ob, rew, done, _ = env.step(ac)
@@ -151,8 +160,8 @@ class MxNetPolicyBase:
     rewards = np.array(rewards, dtype=np.float32)
 
     if save_obs:
-      return rewards, t, np.array(obs)
-    return rewards, t, novelty_vector
+      return rewards, t, np.array(obs), np.array(novelty_vector)
+    return rewards, t, np.array(novelty_vector)
 
   def act(self, observation, random_stream=None):
     raise NotImplementedError

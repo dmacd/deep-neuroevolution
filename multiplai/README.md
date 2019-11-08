@@ -13,6 +13,9 @@ Can follow instructions in the root readme except:
 - socket perms need to be 777 (modified default redis config files
 )               
 
+*** KILL REDIS BETWEEN RUNS OR YOU WILL END UP WITH STALE DATA
+ CONSUMED BY WORKERS ***
+
 Useful incantations:
 
 ```

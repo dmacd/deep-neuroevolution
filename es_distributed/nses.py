@@ -30,6 +30,9 @@ def euclidean_distance(x, y):
         a = np.linalg.norm(y - x[:m])
         b = np.linalg.norm(y[-1] - x[m:])
     else:
+        # import pdb; pdb.set_trace()
+        # print(">>>>>>>> x,y:", x, y)
+
         a = np.linalg.norm(x - y[:n])
         b = np.linalg.norm(x[-1] - y[n:])
     return np.sqrt(a**2 + b**2)
@@ -54,6 +57,14 @@ def get_mean_bc(env, policy, tslimit, num_rollouts=1):
     return np.mean(novelty_vector, axis=0)
 
 def setup_env(exp):
+    # TODO: factor out this gym setup and use it in all algos
+    ############################################################################
+    ## multiplai
+
+    # inject gym registrations
+    import multiplai.evals.nlu.gym
+    ############################################################################
+
     import gym
     gym.undo_logger_setup()
     config = Config(**exp['config'])
@@ -66,7 +77,12 @@ def setup_env(exp):
 def setup_policy(env, exp, single_threaded):
     from . import policies, tf_util
     sess = make_session(single_threaded=single_threaded)
-    policy = getattr(policies, exp['policy']['type'])(env.observation_space, env.action_space, **exp['policy']['args'])
+
+    # policy = getattr(policies, exp['policy']['type'])(env.observation_space, env.action_space, **exp['policy']['args'])
+    policy_type = es.get_policy_type(exp['policy']['type'])
+
+    policy = policy_type(env.observation_space, env.action_space,
+                         **exp['policy']['args'])
     tf_util.initialize()
     return sess, policy
 
@@ -74,6 +90,9 @@ def run_master(master_redis_cfg, log_dir, exp):
     logger.info('run_master: {}'.format(locals()))
     from .optimizers import SGD, Adam
     from . import tabular_logger as tlogger
+    logger.info('Tabular logging to {}'.format(log_dir))
+    tlogger.start(log_dir)
+
     config, env = setup_env(exp)
     algo_type = exp['algo_type']
     master = MasterClient(master_redis_cfg)
@@ -312,8 +331,18 @@ def run_master(master_redis_cfg, log_dir, exp):
                 policy.set_trainable_flat(theta_dict[p])
                 mean_bc = get_mean_bc(env, policy, tslimit_max, num_rollouts)
                 nov_p = compute_novelty_vs_archive(archive, mean_bc, exp['novelty_search']['k'])
+                # in case our novelty vectors are all zero
+                nov_p = max(nov_p, .000001)
+                print("p=%d nov_p=%f" % (p,nov_p))
                 novelty_probs.append(nov_p)
-            novelty_probs = np.array(novelty_probs) / float(np.sum(novelty_probs))
+            # novelty_probs = np.array(novelty_probs) / (abs(float(np.sum(
+            #     novelty_probs)))+.000001)
+
+            # hack: force sum to 1
+            print("unnormalized novelty_probs:", novelty_probs)
+            novelty_probs = np.array(novelty_probs) / (abs(float(np.sum(
+                novelty_probs))))
+            print("normalized novelty_probs:", novelty_probs)
             curr_parent = np.random.choice(range(pop_size), 1, p=novelty_probs)[0]
         elif exp['novelty_search']['selection_method'] == "round_robin":
             curr_parent = (curr_parent + 1) % pop_size
@@ -322,10 +351,10 @@ def run_master(master_redis_cfg, log_dir, exp):
 
         if config.snapshot_freq != 0 and curr_task_id % config.snapshot_freq == 0:
             import os.path as osp
-            filename = 'snapshot_iter{:05d}_rew{}.h5'.format(
+            filename = osp.join(log_dir, 'snapshot_iter{:05d}_rew{}.h5'.format(
                 curr_task_id,
                 np.nan if not eval_rets else int(np.mean(eval_rets))
-            )
+            ))
             assert not osp.exists(filename)
             policy.save(filename)
             tlogger.log('Saved snapshot {}'.format(filename))
